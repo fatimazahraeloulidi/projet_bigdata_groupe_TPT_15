@@ -1,0 +1,903 @@
+//Script et programme d'analyse de données 
+
+#-----------------#
+#R SHELL #
+#-----------------#
+#connection de R a HIVE : 
+
+-> install.packages("RJDBC", repos = "http://cran.us.r-project.org")'
+ 
+-> library(RJDBC) 
+-> hive_jdbc_jar <- "/usr/local/hive/jdbc/hive-jdbc-3.1.3-standalone.jar"
+-> hive_driver <- "org.apache.hive.jdbc.HiveDriver"
+-> hive_url <- "jdbc:hive2://localhost:10000"
+-> drv <- JDBC(hive_driver, hive_jdbc_jar, "`")
+-> conn <- dbConnect(drv, hive_url, "vagrant", "")
+-> show_databases <- dbGetQuery(conn, "show databases")
+-> print(show_databases)
+
+#Nettoyage de données : 
+# Charger les bibliothèques nécessaires
+library(RJDBC)
+library(tidyverse)
+
+#importation des tables de HIVE vers R : 
+catalogue <- dbGetQuery(conn, "SELECT * FROM catalogue")
+marketing_ext <- dbGetQuery(conn, "SELECT * FROM marketing_ext")
+immatriculation_ext <- dbGetQuery(conn, "SELECT * FROM immatriculation_ext")
+co2_ext <- dbGetQuery(conn, "SELECT * FROM co2_ext")
+customers_ext <- dbGetQuery(conn, "SELECT * FROM customers_ext")
+
+# Configurer la chaîne de connexion JDBC pour Hive
+hive_con <- dbConnect(JDBC("org.apache.hive.jdbc.HiveDriver", "jdbc:hive2://myhost:10000/mydb", "myuser", "mypassword"))
+
+# Extraire les données des tables et les stocker dans des objets R
+catalogue <- dbGetQuery(hive_con, "SELECT * FROM catalogue")
+co2_ext <- dbGetQuery(hive_con, "SELECT * FROM co2_ext")
+customers_ext <- dbGetQuery(hive_con, "SELECT * FROM customers_ext")
+immatriculation_ext <- dbGetQuery(hive_con, "SELECT * FROM immatriculation_ext")
+marketing_ext <- dbGetQuery(hive_con, "SELECT * FROM marketing_ext")
+
+# Identifier les valeurs manquantes dans les tables
+sapply(catalogue, function(x) sum(is.na(x)))
+sapply(co2_ext, function(x) sum(is.na(x)))
+sapply(customers_ext, function(x) sum(is.na(x)))
+sapply(immatriculation_ext, function(x) sum(is.na(x)))
+sapply(marketing_ext, function(x) sum(is.na(x)))
+
+# Identifier les doublons dans les tables
+nrow(catalogue[duplicated(catalogue),])
+nrow(co2_ext[duplicated(co2_ext),])
+nrow(customers_ext[duplicated(customers_ext),])
+nrow(immatriculation_ext[duplicated(immatriculation_ext),])
+nrow(marketing_ext[duplicated(marketing_ext),])
+
+# Identifier les variables liées dans les tables
+cor(catalogue)
+cor(co2_ext)
+cor(customers_ext)
+cor(immatriculation_ext)
+cor(marketing_ext)
+
+# Identifier les variables d'importance particulière dans les tables
+summary(catalogue$price)
+summary(co2_ext$co2)
+summary(customers_ext$age)
+summary(immatriculation_ext$date)
+summary(marketing_ext$targeted)
+
+
+#fonction de conversion numeric : 
+
+convert_numeric <- function(df, col_name) {
+  if (is.numeric(df[[col_name]])) {
+    cat(paste(col_name, "is already numeric. No conversion needed.\n"))
+  } else {
+    if (is.character(df[[col_name]])) {
+      if (nrow(df) == 0) {
+        cat(paste(col_name, "has no data. No conversion needed.\n"))
+      } else {
+        if (all(grepl("^\\d+(\\.\\d+)?$", df[[col_name]]))) {
+          df[[col_name]] <- as.numeric(df[[col_name]])
+          cat(paste("Converted", col_name, "to numeric.\n"))
+        } else {
+          cat(paste(col_name, "contains non-numeric data. No conversion made.\n"))
+        }
+      }
+    } else {
+      cat(paste(col_name, "is not a character column. No conversion made.\n"))
+    }
+  }
+  return(df)
+}
+
+
+#fonction de conversion as.factor
+
+convert_factor <- function(df, col_name) {
+  if (is.factor(df[[col_name]])) {
+    cat(paste(col_name, "is already a factor. No conversion needed.\n"))
+  } else {
+    if (is.numeric(df[[col_name]]) || is.character(df[[col_name]])) {
+      if (nrow(df) == 0) {
+        cat(paste(col_name, "has no data. No conversion needed.\n"))
+      } else {
+        df[[col_name]] <- as.factor(df[[col_name]])
+        cat(paste("Converted", col_name, "to factor.\n"))
+      }
+    } else {
+      cat(paste(col_name, "is not a numeric or character column. No conversion made.\n"))
+    }
+  }
+  return(df)
+}
+
+ 
+
+#conversion logical
+
+convert_logical <- function(df, col_name) {
+  if (is.logical(df[[col_name]])) {
+    cat(paste(col_name, "is already logical. No conversion needed.\n"))
+  } else {
+    if (is.character(df[[col_name]])) {
+      if (nrow(df) == 0) {
+        cat(paste(col_name, "has no data. No conversion needed.\n"))
+      } else {
+        df[[col_name]] <- as.logical(df[[col_name]])
+        cat(paste("Converted", col_name, "to logical.\n"))
+      }
+    } else {
+      cat(paste(col_name, "is not a character column. No conversion made.\n"))
+    }
+  }
+  return(df)
+}
+ #-----------------#
+#CATALOGUE #
+#-----------------#
+
+#-----------------#
+#Catalogue trier#
+#-----------------#
+
+names(catalogue)
+attach(catalogue)
+summary(catalogue)
+with(catalogue, mean(puissance))
+
+t<-catalogue[occasion=="true",]
+f<-catalogue[occasion=="false",]
+
+#catalogue<- filter( catalogue, marque!="?" & marque!="N/D" & marque!=" ")
+catalogue <- subset(catalogue, catalogue.marque != "?" & catalogue.marque != "N/D" & catalogue.marque != " ")
+catalogue<- subset( catalogue, catalogue.nom!="?" & catalogue.nom!="N/D" & catalogue.nom!=" ")
+catalogue<- subset( catalogue, catalogue.puissance!="?" & catalogue.puissance!="N/D" & catalogue.puissance!=" ")
+catalogue<- subset( catalogue, catalogue.longueur!="?" & catalogue.longueur!="N/D" & catalogue.longueur!=" ")
+catalogue<- subset( catalogue, catalogue.nbplaces!="?" & catalogue.nbplaces!="N/D" & catalogue.nbplaces!=" ")
+catalogue<- subset( catalogue, catalogue.nbportes!="?" & catalogue.nbportes!="N/D" & catalogue.nbportes!=" ")
+catalogue<- subset( catalogue, catalogue.couleur!="?" & catalogue.couleur!="N/D" & catalogue.couleur!=" ")
+catalogue<- subset( catalogue, catalogue.occasion!="?" & catalogue.occasion!="N/D" & catalogue.occasion!=" ")
+catalogue<- subset( catalogue, catalogue.prix!="?" & catalogue.prix!="N/D" & catalogue.prix!=" ")
+
+#appelle des fonctions de conversion 
+
+catalogue <- convert_logical(catalogue, "catalogue.puissance")
+catalogue <- convert_factor(catalogue, "catalogue.longueur")
+catalogue <- convert_factor(catalogue, "catalogue.couleur")
+catalogue <- convert_numeric(catalogue, "puissance")
+catalogue <- convert_numeric(catalogue, "nbplaces")
+catalogue <- convert_numeric(catalogue, "nbportes")
+catalogue <- convert_numeric(catalogue, "prix")
+#appelle de la fonction pour la table catalogue 
+
+
+
+
+x<-na.omit(immatriculations)
+sum(is.na(x))
+#-----------------#
+#Marketing #
+#-----------------#
+
+marketing_ext <- convert_logical(catalogue, "deuxiemevoiture")
+marketing_ext <- convert_factor(catalogue, "situationFamiliale")
+marketing_ext <- convert_numeric(catalogue, "nbEnfantsAcharge")
+marketing_ext <- convert_numeric(catalogue, "age")
+marketing_ext <- convert_numeric(catalogue, "taux")
+
+
+#--------------#
+#customers_ext#
+#--------------#
+
+attach(customers_ext)
+
+#filtre and replace 
+names(customers_ext)
+
+customers_ext<- subset( customers_ext, customers_ext.sexe!="?" & customers_ext.sexe!="N/D" & customers_ext.sexe!=" ")
+customers_ext<- subset( customers_ext, customers_ext.age!="?" & customers_ext.age!="N/D" & customers_ext.age!=" ")
+customers_ext<- subset( customers_ext, customers_ext.taux!="?" & customers_ext.taux!="N/D" & customers_ext.taux!=" ")
+customers_ext<- subset( customers_ext, customers_ext.situationFamiliale!="?" & customers_ext.situationFamiliale!="N/D" & customers_ext.situationFamiliale!=" ")
+customers_ext<- subset( customers_ext, customers_ext.nbEnfantsAcharge!="?" & customers_ext.nbEnfantsAcharge!="N/D" & customers_ext.nbEnfantsAcharge!=" ")
+customers_ext<- subset( customers_ext, customers_ext.X2eme.voiture!="?" & customers_ext.X2eme.voiture!="N/D" & customers_ext.X2eme.voiture!=" ")
+customers_ext<- subset( customers_ext, customers_ext.immatriculation!="?" & customers_ext.immatriculation!="N/D" & customers_ext.immatriculation!=" ")
+
+#test display
+customers_ext[customers_ext$customers_ext.sexe!="Masculin" & customers_ext$customers_ext.sexe!="M" &  customers_ext$customers_ext.sexe!="F?minin" &  customers_ext$sexe!="F" &  customers_ext$scustomers_ext.exe!="Femme" &  customers_ext$customers_ext.sexe!="Homme" & customers_ext$customers_ext.sexe!="?" &  customers_ext$customers_ext.sexe!="N/D",]
+customers_ext[customers_ext.sexe=="?" &  customers_ext.sexe=="N/D" & customers_ext.sexe==" ",]
+customers_ext[customers_ext.age=="?" &  customers_ext.age=="N/D" & customers_ext.age==" ",]
+
+#replace the customers_ext sexe typing 
+
+customers_ext$customers_ext.sexe <- str_replace(customers_ext$customers_ext.sexe, "Homme", "M")
+customers_ext$customers_ext.sexe <- str_replace(customers_ext$customers_ext.sexe, "Masculin", "M")
+customers_ext$customers_ext.sexe <- str_replace(customers_ext$customers_ext.sexe, "F?minin", "F")
+customers_ext$customers_ext.sexe <- str_replace(customers_ext$customers_ext.sexe, "Femme", "F")
+customers_ext$customers_ext.sexe <- str_replace(customers_ext$customers_ext.sexe, "F�F", "F")
+
+customers_ext
+# catgories exists : Seul, Seule, Celibataire, Mari?(e), En couple, Divorc?e. 
+#replacing  
+
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "Seul", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "Seule", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?libatairee", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?libataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?Celibataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?C?Celibataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?CeCelibataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C?C?CeCelibataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C�Celibataire", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "Divorc\xe9e", "Celibataire")
+customers_ext$customers_ext.situationFamiliale <- str_replace(customers_ext$customers_ext.situationFamiliale, "C\xe9libataire", "Celibataire")
+
+customers_ext$situationFamiliale <- gsub("Mari\\�\\(e\\)", "En Couple", customers_ext$situationFamiliale)
+
+customers_ext$situationFamiliale <- str_replace(customers_ext$situationFamiliale, "Mari�(e)", "En Couple")
+#checking
+customers_ext[customers_ext$customers_ext.situationFamiliale!="En Couple" & customers_ext$customers_ext.situationFamiliale!="Celibataire" & customers_ext$customers_ext.situationFamiliale!="Mari�(e)" & customers_ext$customers_ext.situationFamiliale!="Divorc�e",]
+customers_ext[customers_ext$customers_ext.situationFamiliale!="En Couple" & customers_ext$customers_ext.situationFamiliale!="Celibataire" & customers_ext$customers_ext.situationFamiliale!="Seule" & customers_ext$customers_ext.situationFamiliale!="Mari?(e)" & customers_ext$customers_ext.situationFamiliale!="Seul" & customers_ext$customers_ext.situationFamiliale!="Divorc?e",]
+customers_ext
+ # nb d'enfants
+
+customers_ext[customers_ext$customers_ext.nbEnfantsAcharge!="0" & customers_ext$customers_ext.nbEnfantsAcharge!="1" & customers_ext$customers_ext.nbEnfantsAcharge!="2" & customers_ext$customers_ext.nbEnfantsAcharge!="3" & customers_ext$customers_ext.nbEnfantsAcharge!="4",]
+
+#nbEnfants equals -1 
+customers_ext<- subset( customers_ext, customers_ext.nbEnfantsAcharge!="-1")
+
+#checking
+customers_ext[customers_ext$customers_ext.nbEnfantsAcharge<"0",]
+
+#checking taux :
+customers_ext[customers_ext$customers_ext.taux<"0" ,]
+
+#il y a pas mal de customers_ext qui ont -1 taux donc on enl?ve ces lignes
+customers_ext<- subset( customers_ext, customers_ext.taux!="-1")
+#conversions of types
+
+customers_ext <- convert_numeric(customers_ext$customers_ext.age)
+customers_ext<- convert_factor (customers_ext$customers_ext.sexe)
+customers_ext<- convert_numeric(customers_ext$customers_ext.taux)
+customers_ext<- convert_factor (customers_ext$customers_ext.situationFamiliale)
+customers_ext<- convert_numeric (customers_ext$customers_ext.nbEnfantsAcharge)
+customers_ext<- convert_logical (customers_ext$customers_ext.X2eme.voiture)
+
+
+
+summary(customers_ext)
+#check for age :
+customers_ext[customers_ext$customers_ext.age <"18" ,]
+customers_ext[customers_ext$customers_ext.age >"84" ,]
+
+#age -1 
+customers_ext<- subset( customers_ext, customers_ext.age!="-1")
+
+#v?rifions 2eme voiture :
+customers_ext[customers_ext$customers_ext.X2eme.voiture!="true" & customers_ext$customers_ext.X2eme.voiture!="false",]
+
+#immatriculations :
+
+#NA
+
+x<-na.omit(customers_ext)
+sum(is.na(x))
+#no NA
+
+#------------------------#
+#immatriculation_ext
+#------------------------#
+
+immatriculation_ext <- convert_numeric(immatriculation_ext$immatriculation_ext.age)
+immatriculation_ext<- convert_factor (immatriculation_ext$immatriculation_ext.sexe)
+immatriculation_ext<- convert_numeric(immatriculation_ext$immatriculation_ext.taux)
+immatriculation_ext<- convert_factor (immatriculation_ext$immatriculation_ext.situationFamiliale)
+immatriculation_ext<- convert_numeric (immatriculation_ext$immatriculation_ext.nbEnfantsAcharge)
+immatriculation_ext<- convert_logical (immatriculation_ext$immatriculation_ext.X2eme.voiture)
+
+#----Deleting Missing values  ------#
+x<-na.omit(immatriculation_ext)
+sum(is.na(x))
+
+#----stockage des données nettoyé dans des nouveaux dataframes  ------#
+
+cleaned_customers_ext <- data.frame(customers_ext)
+cleaned_marketing_ext <- data.frame(marketing_ext)
+cleaned_immatrculation_ext <- data.frame(immatriculation_ext)
+cleaned_catalogue <- data.frame(catalogue)
+
+#exportation en fichier csv des données nettoyé  :
+ write.csv(cleaned_customers_ext, "Customers_Data.csv")
+ write.csv(cleaned_marketing_ext, "marketig_Data.csv")
+ write.csv(cleaned_immatrculation_ext, "Immatriculations.csv")
+ write.csv(cleaned_catalogue, "catalogue_Data.csv")
+
+
+#-----------------#
+#R STUDIO#
+#-----------------#
+
+#--------------------------------------#
+# ACTIVATION DES LIRAIRIES NECESSAIRES #
+#--------------------------------------#
+install.packages("rpart")
+library(rpart)
+install.packages("rpart.plot")
+library(rpart.plot)
+install.packages("C50")
+library(C50)
+install.packages("randomForest")
+library(randomForest)
+install.packages("e1071")
+library(e1071)
+install.packages("naivebayes")
+library(naivebayes)
+install.packages("nnet")
+library(nnet)
+install.packages("kknn")
+library(kknn)
+install.packages("ROCR")
+library(ROCR)
+install.packages("rvest")
+library(rvest)
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("plyr")
+library(plyr)
+install.packages("dplyr")
+library(dplyr)
+install.packages("scales")
+library(scales)
+install.packages("maps")
+library(maps)
+install.packages("mapproj")
+library(mapproj)
+install.packages("plotly")
+library(plotly)
+install.packages("qplot")
+library(qplot)
+library(ggplot2)
+install.packages("digest")
+library(digest)
+install.packages("stringr")
+library(stringr)
+install.packages("sqldf")
+library(sqldf)
+install.packages("tree")
+library(tree)
+
+#the directory
+getwd()
+
+df1<-read.csv("Clients_14.csv",header = TRUE,sep = ",",dec = ".")
+df2<-read.csv("Clients_5.csv",header = TRUE,sep = ",",dec = ".")
+cust<-rbind(df1,df2)
+summary(cust)
+
+
+#......................#
+#fixing cust#
+#......................#
+cust<-na.omit(cust)
+sum(is.na(cust))
+  
+Customers
+
+class(cust$situationFamiliale)
+cust$sexe <- gsub("Masculin", "M", cust$sexe)
+cust$sexe <- gsub("Homme", "M", cust$sexe)
+cust$sexe <- gsub("Femme", "F", cust$sexe)
+cust$sexe <- gsub("F\xe9minin", "F", cust$sexe)
+cust$situationFamiliale <- gsub("C\xe9libataire", "Celibataire", cust$situationFamiliale)
+cust$situationFamiliale <- gsub("Seule", "Celibataire", cust$situationFamiliale)
+cust$situationFamiliale <- gsub("Mari\xe9(e)", "En Couple", cust$situationFamiliale)
+cust<- subset( cust, sexe!="?" & sexe!="N/D" & sexe!=" ")
+cust<- subset( cust, age!="?" & age!="N/D" & age!=" ")
+cust<- subset( cust, situationFamiliale!="?" & situationFamiliale!="N/D" & situationFamiliale!=" ")
+cust<- subset( cust, nbEnfantsAcharge!="?" & nbEnfantsAcharge!="N/D" & nbEnfantsAcharge!=" ")
+cust<- subset( cust, X2eme.voiture!="?" & X2eme.voiture!="N/D" & X2eme.voiture!=" ")
+cust<- subset( cust, immatriculation!="?" & immatriculation!="N/D" & immatriculation!=" ")
+
+#replacing 
+
+library(stringr)
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "Seul", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "Seule", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?libatairee", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?libataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?Celibataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?C?Celibataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?CeCelibataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C?C?CeCelibataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C�Celibataire", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "Divorc\xe9e", "Celibataire")
+
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "C\xe9libataire", "Celibataire")
+cust$situationFamiliale <- str_replace(cust$situationFamiliale, "Mari�(e)", "En Couple")
+cust$situationFamiliale <- gsub("Mari\\�\\(e\\)", "En Couple", cust$situationFamiliale)
+
+
+#nbEnfants equals -1
+
+cust<- subset( cust, nbEnfantsAcharge!="-1")
+
+
+#checking
+
+cust[cust$nbEnfantsAcharge<"0",]
+
+#checking taux :
+
+cust[cust$taux<"0" ,]
+
+#delete taux 
+
+cust<- subset( cust, taux!="-1")
+#check for age :
+
+cust[cust$age <"18" ,]
+
+cust[cust$age >"84" ,]
+
+#age -1
+
+cust<- subset( cust, age!="-1")
+
+
+str(Customers)
+
+Customers$situationFamiliale<-as.factor(Customers$situationFamiliale)
+Customers$sexe <- as.factor(Customers$sexe)
+Customers$categorie <- as.factor(Customers$categorie)
+Customers$couleur <- as.factor(Customers$couleur)
+Customers$situationFamiliale <- as.factor(Customers$situationFamiliale)
+Customers$nbEnfantsAcharge <- as.numeric(Customers$nbEnfantsAcharge)
+Customers$taux <- as.numeric(Customers$taux)
+cust$X2eme.voiture <- as.logical(cust$X2eme.voiture)
+
+summary(Customers)
+summary(Immatriculations)
+
+
+#Visualisation
+str(catalogue_Data)
+str(Immatriculations)
+str(marketing_Data)
+str(Customers)
+
+#----------------------------------------------#
+#join immatriculations and client#
+#----------------------------------------------#
+Customers
+customers <-merge(cust, Immatriculations, by="immatriculation") 
+
+summary(customers)
+write.csv(customers,"Customers.csv")
+
+View(customers)
+client2voitures <- Customers_Data[Customers_Data$X2eme.voiture!="FALSE",]
+client2voitures
+print(customers) 
+
+
+
+#DOUBLONS
+
+#pour clients dans les immatriculations
+doublons <- Customers_Data[duplicated(Customers_Data$immatriculation),]
+doublons
+
+sum(duplicated(Immatriculations$immatriculation))
+
+client_unique<-unique(Customers_Data)
+client_unique
+
+Immatriculations[Immatriculations$immatriculation=="1557 AB 48",]
+
+#its correspond to 2 different cars
+#la liaison dans cutomers : 
+customers[customers$immatriculation=="1557 AB 48",]
+customers
+
+#delete the doubles in client 
+Customers_Data <- Customers_Data[duplicated(Customers_Data$immatriculation) =="FALSE",]
+client_sans_doublons <- Customers_Data[duplicated(Customers_Data$immatriculation) =="FALSE",]
+client_sans_doublons
+#doublons dans immatriculations:
+doublons_immat <- Immatriculations[duplicated(Immatriculations$immatriculation)=="TRUE",]
+doublons_immat
+
+
+Immatriculations <- Immatriculations[duplicated(Immatriculations$immatriculation)=="FALSE",]
+Immatriculations
+immatriculations_doublons <- Immatriculations[duplicated(Immatriculations$immatriculation) =="TRUE",]
+
+#on relie les 2 tables 
+customers <-merge(Customers_Data, Immatriculations, by="immatriculation")
+summary(customers)
+#doubles in customers M
+customers[duplicated(customers$immatriculation)=="TRUE",]
+#NO DOUBLE IN CUSTOMER
+Customers
+#----------------------------------------------#
+#changement des noms de colonnes#
+#----------------------------------------------#
+
+colnames(Customers_Data)[2] <- "customers_ext.age"
+colnames(Customers_Data)[3] <- "customers_ext.sexe"
+colnames(Customers_Data)[4] <- "customers_ext.taux"
+colnames(Customers_Data)[5] <- "customers_ext.situationFamiliale"
+colnames(Customers_Data)[6] <- "customers_ext.nbEnfantsAcharge"
+colnames(Customers_Data)[7] <- "customers_ext.X2eme.Voiture"
+colnames(Customers_Data)[8] <- "immatriculation"
+colnames(Immatriculation_Data)[2] <- "immatriculation"
+
+colnames(Customers_Data)
+
+#DOUBLONS
+#pour clients dans les immatriculations
+doublons <- Customers_Data[duplicated(Customers_Data$immatriculation),]
+doublons
+
+Customers<- Customers[duplicated(Customers$immatriculation) =="FALSE",]
+sum(duplicated(Customers$immatriculation))
+
+
+#just to see the structure of the data 
+table(Customers$immatriculation)
+str(Customers)
+str(Immatriculations)
+
+Customers$situationFamiliale<-as.factor(Customers$situationFamiliale)
+Customers$sexe <- as.factor(Customers$sexe)
+Customers$couleur <- as.factor(cust$couleur)
+Customers$categorie <- as.factor(Customers$categorie)
+Customers$longueur<-as.factor(Customers$longueur)
+cust$taux <- as.numeric(cust$taux)
+cust$X2eme.voiture <- as.logical(cust$X2eme.voiture)
+cust$age <- as.numeric(cust$age)
+
+Customers<-na.omit(Customers)
+sum(is.na(Customers))
+#----------#
+#CATEGORIES#
+#----------#
+
+
+
+#nuage de point categories de voiture 
+
+catalogue_Data$catalogue.couleur <- as.factor(catalogue_Data$catalogue.couleur)
+catalogue_Data$catalogue.longueur<-as.factor(catalogue_Data$catalogue.longueur)
+
+str(catalogue_Data)
+summary(catalogue_Data)
+catalogue_Data
+
+library(ggplot2)
+
+ggplot(catalogue_Data, aes(x = catalogue.longueur, y = catalogue.puissance)) + geom_point()
+install.packages("qplot")
+library(qplot)
+qplot(catalogue.longueur, catalogue.puissance, data= catalogue_Data)
+
+qplot(catalogue.longueur, catalogue.nbplaces, data=catalogue_Data)
+
+qplot(catalogue.longueur, catalogue.prix, data=catalogue_Data)
+
+qplot(catalogue.nbplaces, catalogue.prix, data=catalogue_Data)
+
+qplot(catalogue.nbplaces, catalogue.nbportes, data=catalogue_Data)
+
+qplot(catalogue.longueur, catalogue.nbportes, data=catalogue_Data) 
+
+qplot(catalogue.puissance, catalogue.prix, data=catalogue_Data, color=catalogue.longueur)
+
+qplot(catalogue.nbplaces, catalogue.puissance, data=catalogue_Data)
+
+qplot(catalogue.nom, catalogue.prix, data=catalogue_Data, color=catalogue.longueur)
+
+
+#doubles catalogue
+catalogue_Data[duplicated(catalogue_Data)=="TRUE",]
+#none
+
+
+Coupé <- catalogue_Data[catalogue_Data$catalogue.longueur=="courte",]
+Crossover <- catalogue_Data[catalogue_Data$catalogue.nbplaces==7,]
+sport <- catalogue_Data[catalogue_Data$catalogue.puissance >300,]
+berlineconfort <- catalogue_Data[catalogue_Data$catalogue.longueur=="treslongue" & catalogue_Data$catalogue.puissance> 190 & catalogue_Data$catalogue.puissance <300,]
+Break <- catalogue_Data[catalogue_Data$catalogue.longueur=="longue"& catalogue_Data$catalogue.puissance <200,]
+berline <- catalogue_Data[catalogue_Data$catalogue.longueur=="longue" & catalogue_Data$catalogue.nbplaces!=7,]
+Fourgonnette <- catalogue_Data[catalogue_Data$catalogue.longueur=="moyenne" & catalogue_Data$catalogue.puissance <250,]
+summary(Customers)
+
+#attribuer les cat?gories aux don?nes de Immatriculations
+
+#Attribution 1 :
+Immatriculations$categorie <- ifelse(Immatriculations$longueur =="courte", Immatriculations$categorie <- "Coupé", 
+                                     ifelse(Immatriculations$nbPlaces ==7, Immatriculations$categorie <- "Crossover", 
+                                            ifelse(Immatriculations$puissance >= 200 & Immatriculations$longueur=="treslongue", Immatriculations$categorie <- "sport", Immatriculations$categorie <- "berlineconfort")))
+
+
+#Attribution 2 :
+Immatriculations$categorie <- ifelse(Immatriculations$longueur =="courte", Immatriculations$categorie <- "coupé", 
+                                     ifelse(Immatriculations$nbPlaces ==7, Immatriculation$categorie <- "Crossover", 
+                                            ifelse(Immatriculations$puissance > 300, Immatriculations$categorie <- "sport", 
+                                                   ifelse(Immatriculations$longueur =="treslongue" & Immatriculations$puissance> 190 & Immatriculations$puissance <300, Immatriculations$categorie <- "berlineconfort", 
+                                                          ifelse(Immatriculations$longueur=="moyenne", Immatriculations$categorie <- "Break", Immatriculations$categorie<- "berline")))))
+
+
+
+Immatriculations[Immatriculations$nbPlaces == 7, ]
+
+#no nb place==7
+summary(Immatriculations)
+Immatriculations$categorie<- as.factor(Immatriculations$categorie)
+
+#join between imma and customers 
+summary(customers)
+customers <-merge(Customers_Data, Immatriculations, by="immatriculation")
+customers
+
+customers$situationFamiliale<-as.factor(customers$situationFamiliale)
+class(customers$customers_ext.situationFamiliale)
+customers$situationFamiliale <- gsub("Mari\\�\\(e\\)", "En Couple", customers$situationFamiliale)
+customers$sexe <- as.factor(customers$sexe)
+customers$situationFamiliale <- as.factor(customers$situationFamiliale)
+customers$longueur <- as.factor(customers$longueur)
+customers$nom <- as.factor(customers$nom)
+customers$marque <- as.factor(customers$marque)
+customers$immatriculation <- as.factor(customers$immatriculation)
+summary(customers)
+#del column not usefull 
+
+View(customers)
+customers <- subset(customers, select= -immatriculation)
+customers <- subset(customers, select= -nbPlaces)
+summary(customers)
+colnames(customers)[2] <- "age"
+names(customers)
+
+summary(customers)
+
+
+#training part
+
+# Load the caret package
+install.packages("caret")
+library(caret)
+
+# Set the seed for reproducibility
+set.seed(123)
+
+# Split the dataset into 70% training and 30% testing
+train_indices <- createDataPartition(Customers$categorie, p = 0.7, list = FALSE)
+
+training_data <- Customers[train_indices, ]
+
+testing_data <- Customers[-train_indices, ]
+
+#testing_data <- testing_data[, -which(names(testing_data) == "categorie")]
+summary(training_data)
+summary(testing_data)
+
+#------------#
+#CLASSIFIEURS#
+#------------#
+
+#Suppression des variables inutiles
+
+training_data <- subset(training_data, select = -nbPortes)
+training_data <- subset(training_data, select = -immatriculation)
+training_data <- subset(training_data, select = -longueur)
+training_data <- subset(training_data, select = -puissance)
+training_data <- subset(training_data, select = -marque)
+training_data <- subset(training_data, select = -nom)
+training_data <- subset(training_data, select = -couleur)
+training_data <- subset(training_data, select = -occasion)
+training_data <- subset(training_data, select = -prix)
+training_data[duplicated(training_data)=="TRUE",]
+summary(testing_data)
+
+testing_data <- subset(testing_data, select = -nbPortes)
+testing_data <- subset(testing_data, select = -longueur)
+testing_data <- subset(testing_data, select = -puissance)
+testing_data <- subset(testing_data, select = -marque)
+testing_data <- subset(testing_data, select = -nom)
+testing_data <- subset(testing_data, select = -couleur)
+testing_data <- subset(testing_data, select = -occasion)
+testing_data <- subset(testing_data, select = -prix)
+testing_data <- subset(testing_data, select = -categorie)
+testing_data <- subset(testing_data, select = -immatriculation)
+
+
+names(testing_data)
+names(training_data)
+
+
+#-------------#
+# NAIVE BAYES #
+#-------------#
+
+# Apprentissage du classifeur de type naive bayes
+
+
+install.packages("naivebayes")
+library(naivebayes)
+#no missing values 
+sum(is.na(testing_data))
+sum(is.na(training_data))
+
+
+nb <- naive_bayes(training_data$categorie~., training_data,laplace = 1)
+nb
+
+nrow(testing_data)
+# Test du classifieur : classe predite
+nb_class <- predict(nb, testing_data, type = "class")
+
+table(nb_class)
+
+
+# Test du classifieur : probabilites pour chaque prediction
+nb_prob <- predict(nb, testing_data, type="prob")
+nb_prob
+
+testing_data$categorie_predicted <- nb_class
+# Matrice de confusion
+table( testing_data$categorie_predicted, nb_class)
+# Get the confusion matrix
+conf_mat <- table(testing_data$categorie_predicted, nb_class)
+
+# Calculate the accuracy
+accuracy <- sum(diag(conf_mat)) / sum(conf_mat)
+accuracy
+
+#-------------#
+# C5.0      NOT WORKING  #
+#-------------#
+# create a subset containing 10% of the original data frame
+n <- nrow(training_data)
+subset_size <- round(n * 0.1)
+subset_index <- sample(1:n, subset_size, replace = FALSE)
+subset_data <- training_data[subset_index, ]
+
+
+
+install.packages("C50")
+library(C50)
+str(training_data)
+training_data$categorie <- as.factor(training_data$categorie)
+testing_data$categorie <- as.factor(testing_data$categorie)
+testing_data$sexe <- as.factor(testing_data$sexe)
+training_data$sexe <- as.factor(training_data$sexe)
+testing_data$situationFamiliale <- as.factor(testing_data$situationFamiliale)
+training_data$situationFamiliale <- as.factor(training_data$situationFamiliale)
+training_data$X2eme.voiture <- as.factor(training_data$X2eme.voiture)
+testing_data$X2eme.voiture <- as.factor(testing_data$X2eme.voiture)
+training_data$X2eme.voiture <- as.logical(training_data$X2eme.voiture)
+class(tree_C50)
+typeof(tree_C50)
+
+# Apprentissage du classifeur de type arbre de d?cision
+unique(training_data$sexe)
+unique(training_data$situationFamiliale)
+unique(training_data$categorie)
+
+sum(is.na(training_data))
+str(training_data)
+str(testing_data)
+
+#marketing$X2eme.voiture <- as.factor(marketing$X2eme.voiture)
+training_data$situationFamiliale <- as.factor(training_data$situationFamiliale)
+summary(subset_data)
+str(subset_data)
+tree_C50 <- C5.0(training_data$categorie ~ ., data = training_data, trials = 10, minCases = 2)
+
+
+tree_C50 <- C5.0(subset_data$categorie ~ ., data = subset_data)
+tree_C50
+
+plot(tree_C50, type="simple")
+
+#-----------------#
+# NEURAL NETWORKS #
+#-----------------#
+
+
+# Apprentissage du classifeur de type perceptron monocouche
+install.packages("nnet")
+library(nnet)
+
+classifieur_nn <- nnet(categorie~age + sexe +taux+ situationFamiliale+nbEnfantsAcharge+X2eme.voiture, training_data, size=6)
+
+# Load the caret package
+library(caret)
+
+# Define the training control for cross-validation
+ctrl <- trainControl(method = "cv", number = 10)
+
+# Train the model using 10-fold cross-validation
+model <- train(categorie ~ age + sexe + taux + situationFamiliale + nbEnfantsAcharge + X2eme.voiture, 
+               data = training_data, 
+               method = "nnet",
+               trControl = ctrl,
+               tuneLength = 5,
+               trace = FALSE)
+
+# Print the model results
+print(model)
+
+
+#----#
+#TREE#
+#----#
+install.packages("tree")
+library(tree)
+classifieur_tree <-tree(categorie~.,training_data)
+plot(classifieur_tree)
+text(classifieur_tree)
+training_data
+testing_data
+#----#
+#RANDOM FOREST#
+#----#
+library(randomForest)
+# Train random forest model
+rf_model <- randomForest(categorie~., training_data, ntree = 500)
+# Predict on test data
+rf_pred <- predict(rf_model, testing_data)
+
+# Evaluate model performance
+conf_mat <- table(rf_pred, testing_data$categorie)
+# Evaluate the accuracy of the model
+accuracy <- sum(diag(conf_mat))/sum(conf_mat)
+cat("Accuracy:", round(accuracy, 3))
+# Print the confusion matrix
+table(rf_pred, testing_data$categorie)
+testing_data
+
+#---------------------#
+# Rpart #
+#---------------------#
+library(rpart)
+library(caret)
+# Create the model using rpart
+rpart_model <- rpart(categorie ~ ., data = training_data)
+
+# Print the model summary
+summary(rpart_model)
+
+# Plot the tree
+plot(rpart_model)
+text(rpart_model)
+#---------------------#
+# K-NEAREST NEIGHBORS #
+#---------------------#
+client_EA <- Customers[1:2000,]
+client_EA
+
+View(client_EA)
+client_ET <- Customers[2000:4000,]
+client_ET
+
+View(client_ET)
+# Apprentissage et test simultanes du classifeur de type k-nearest neighbors
+classifieur_knn <- kknn(categorie~., client_EA, client_ET)
+
+classifieur_knn <- kknn(categorie~age + sexe +taux+ situationFamiliale+nbEnfantsAcharge+X2eme.voiture, client_EA, client_ET)
+
+
+
